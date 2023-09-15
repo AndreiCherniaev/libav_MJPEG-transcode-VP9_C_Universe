@@ -510,46 +510,44 @@ int main(int argc, char **argv)
     }
 
     /* flush decoders, filters and encoders */
-    {
-        StreamContext *stream;
+    StreamContext *stream;
 
-        stream = &stream_ctx[0];
+    stream = &stream_ctx[0];
 
-        av_log(NULL, AV_LOG_INFO, "Flushing stream %u decoder\n", 0);
+    av_log(NULL, AV_LOG_INFO, "Flushing stream %u decoder\n", 0);
 
-        /* flush decoder */
-        ret = avcodec_send_packet(stream->dec_ctx, NULL);
-        if (ret < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Flushing decoding failed\n");
+    /* flush decoder */
+    ret = avcodec_send_packet(stream->dec_ctx, NULL);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Flushing decoding failed\n");
+        goto end;
+    }
+
+    while (ret >= 0) {
+        ret = avcodec_receive_frame(stream->dec_ctx, stream->dec_frame);
+        if (ret == AVERROR_EOF)
+            break;
+        else if (ret < 0)
             goto end;
-        }
 
-        while (ret >= 0) {
-            ret = avcodec_receive_frame(stream->dec_ctx, stream->dec_frame);
-            if (ret == AVERROR_EOF)
-                break;
-            else if (ret < 0)
-                goto end;
-
-            stream->dec_frame->pts = stream->dec_frame->best_effort_timestamp;
-            ret = filter_encode_write_frame(stream->dec_frame);
-            if (ret < 0)
-                goto end;
-        }
-
-        /* flush filter */
-        ret = filter_encode_write_frame(NULL);
-        if (ret < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Flushing filter failed\n");
+        stream->dec_frame->pts = stream->dec_frame->best_effort_timestamp;
+        ret = filter_encode_write_frame(stream->dec_frame);
+        if (ret < 0)
             goto end;
-        }
+    }
 
-        /* flush encoder */
-        ret = flush_encoder();
-        if (ret < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Flushing encoder failed\n");
-            goto end;
-        }
+    /* flush filter */
+    ret = filter_encode_write_frame(NULL);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Flushing filter failed\n");
+        goto end;
+    }
+
+    /* flush encoder */
+    ret = flush_encoder();
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Flushing encoder failed\n");
+        goto end;
     }
 
     av_write_trailer(ofmt_ctx);
