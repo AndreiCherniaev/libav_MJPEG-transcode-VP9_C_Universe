@@ -1,0 +1,4 @@
+[submodule "FFMpeg_themself/FFmpeg"]
+	path = FFMpeg_themself/FFmpeg
+	url = https://github.com/FFmpeg/FFmpeg.git
+	branch = master
