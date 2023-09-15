@@ -58,6 +58,8 @@ typedef struct StreamContext {
     AVFrame *dec_frame;
 } StreamContext;
 static StreamContext *stream_ctx;
+StreamContext *stream;
+AVPacket *packet = NULL;
 
 static int open_input_file(const char *filename)
 {
@@ -366,7 +368,6 @@ static int init_filters(void)
 
 static int encode_write_frame(int flush)
 {
-    StreamContext *stream = &stream_ctx[0];
     FilteringContext *filter = &filter_ctx[0];
     AVFrame *filt_frame = flush ? NULL : filter->filtered_frame;
     AVPacket *enc_pkt = filter->enc_pkt;
@@ -458,7 +459,6 @@ static int flush_encoder()
 int main(int argc, char **argv)
 {
     int ret;
-    AVPacket *packet = NULL;
     unsigned int stream_index;
 
     //    if (argc != 3) {
@@ -477,6 +477,8 @@ int main(int argc, char **argv)
     if (!(packet = av_packet_alloc()))
         goto end;
 
+    stream = &stream_ctx[0];
+
     /* read all packets */
     while (1) {
         ret = av_read_frame(ifmt_ctx, packet);
@@ -485,8 +487,6 @@ int main(int argc, char **argv)
         }
         av_log(NULL, AV_LOG_DEBUG, "Demuxer gave frame of stream_index %u\n",
                stream_index);
-
-        StreamContext *stream = &stream_ctx[0];
 
         av_log(NULL, AV_LOG_DEBUG, "Going to reencode&filter the frame\n");
 
@@ -512,10 +512,6 @@ int main(int argc, char **argv)
     }
 
     /* flush decoders, filters and encoders */
-    StreamContext *stream;
-
-    stream = &stream_ctx[0];
-
     av_log(NULL, AV_LOG_INFO, "Flushing stream %u decoder\n", 0);
 
     /* flush decoder */
