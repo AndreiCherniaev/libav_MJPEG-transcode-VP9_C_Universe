@@ -479,8 +479,10 @@ int main(int argc, char **argv)
 
     /* read all packets */
     while (1) {
-        if ((ret = av_read_frame(ifmt_ctx, packet)) < 0)
+        ret = av_read_frame(ifmt_ctx, packet);
+        if (ret < 0){
             break;
+        }
         av_log(NULL, AV_LOG_DEBUG, "Demuxer gave frame of stream_index %u\n",
                stream_index);
 
