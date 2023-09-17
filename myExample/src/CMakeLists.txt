@@ -2,8 +2,9 @@ cmake_minimum_required(VERSION 3.14)
 
 project(myExample LANGUAGES C)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set (CMAKE_C_EXTENSIONS ON)
 
 # With Environment Variables https://stackoverflow.com/questions/77049844/pkg-config-path-a-required-package-was-not-found
 #cmake_path(SET pkgconfig_path "${CMAKE_CURRENT_LIST_DIR}/../../FFMpeg_themself/FFmpeg_build/lib/pkgconfig/" NORMALIZE)
@@ -26,7 +27,9 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
 )
 
 add_executable(${PROJECT_NAME}
-    transcode.c
+    #transcode.c
+    3_transcoding.c
+    video_debugging.c
 )
 
 target_include_directories( ${PROJECT_NAME} PUBLIC
