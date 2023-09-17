@@ -3,7 +3,7 @@ This is C project that using libav (FFmpeg), build system is cmake. Tested on Ub
 ## Prerequisites
 ```bash
 sudo apt install cmake gcc git ninja-build pkg-config
-sudo apt-get install libvpx-dev
+sudo apt-get install libvpx-dev libvorbis-dev libx265-dev libnuma-dev
 ```
 ```bash
 git clone --recurse-submodules -j8 --remote-submodules https://github.com/AndreiCherniaev/libav_MJPEG-transcode-VP9_C_Universe.git && cd libav_MJPEG-transcode-VP9_C_Universe
@@ -21,7 +21,7 @@ libav_MJPEG-transcode-VP9_C_Universe$ ninja -j16 -C myExample/build-host/
 ```
 Before run example we need copy input video to build folder
 ```bash
-libav_MJPEG-transcode-VP9_C_Universe$ cp myExample/input.yuvj422p myExample/build-host
+libav_MJPEG-transcode-VP9_C_Universe$ cp myExample/small_bunny_1080p_60fps.mp4 myExample/build-host
 ```
 Before start we should be in folder with input.yuvj422p video file. If no then "Cannot open input file Segmentation fault (core dumped)". LD_LIBRARY_PATH should be `/home/username/libav_MJPEG-transcode-VP9_C_Universe/FFMpeg_themself/FFmpeg_build/lib` where "username" is current user's name. This is universal code to run example
 ```bash
