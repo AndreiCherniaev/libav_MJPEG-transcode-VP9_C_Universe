@@ -107,33 +107,6 @@ int prepare_video_encoder(StreamingContext *sc, AVCodecContext *decoder_ctx, AVR
     return 0;
 }
 
-int prepare_audio_encoder(StreamingContext *sc, int sample_rate, StreamingParams sp){
-    sc->audio_avs = avformat_new_stream(sc->avfc, NULL);
-
-    sc->audio_avc = avcodec_find_encoder_by_name(sp.audio_codec);
-    if (!sc->audio_avc) {logging("could not find the proper codec"); return -1;}
-
-    sc->audio_avcc = avcodec_alloc_context3(sc->audio_avc);
-    if (!sc->audio_avcc) {logging("could not allocated memory for codec context"); return -1;}
-
-    int OUTPUT_CHANNELS = 2;
-    int OUTPUT_BIT_RATE = 196000;
-    sc->audio_avcc->channels       = OUTPUT_CHANNELS;
-    sc->audio_avcc->channel_layout = av_get_default_channel_layout(OUTPUT_CHANNELS);
-    sc->audio_avcc->sample_rate    = sample_rate;
-    sc->audio_avcc->sample_fmt     = sc->audio_avc->sample_fmts[0];
-    sc->audio_avcc->bit_rate       = OUTPUT_BIT_RATE;
-    sc->audio_avcc->time_base      = (AVRational){1, sample_rate};
-
-    sc->audio_avcc->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL;
-
-    sc->audio_avs->time_base = sc->audio_avcc->time_base;
-
-    if (avcodec_open2(sc->audio_avcc, sc->audio_avc, NULL) < 0) {logging("could not open the codec"); return -1;}
-    avcodec_parameters_from_context(sc->audio_avs->codecpar, sc->audio_avcc);
-    return 0;
-}
-
 int prepare_copy(AVFormatContext *avfc, AVStream **avs, AVCodecParameters *decoder_par) {
     *avs = avformat_new_stream(avfc, NULL);
     avcodec_parameters_copy((*avs)->codecpar, decoder_par);
@@ -172,53 +145,6 @@ int encode_video(StreamingContext *decoder, StreamingContext *encoder, AVFrame *
     }
     av_packet_unref(output_packet);
     av_packet_free(&output_packet);
-    return 0;
-}
-
-int encode_audio(StreamingContext *decoder, StreamingContext *encoder, AVFrame *input_frame) {
-    AVPacket *output_packet = av_packet_alloc();
-    if (!output_packet) {logging("could not allocate memory for output packet"); return -1;}
-
-    int response = avcodec_send_frame(encoder->audio_avcc, input_frame);
-
-    while (response >= 0) {
-        response = avcodec_receive_packet(encoder->audio_avcc, output_packet);
-        if (response == AVERROR(EAGAIN) || response == AVERROR_EOF) {
-            break;
-        } else if (response < 0) {
-            logging("Error while receiving packet from encoder: %s", av_err2str(response));
-            return -1;
-        }
-
-        output_packet->stream_index = decoder->audio_index;
-
-        av_packet_rescale_ts(output_packet, decoder->audio_avs->time_base, encoder->audio_avs->time_base);
-        response = av_interleaved_write_frame(encoder->avfc, output_packet);
-        if (response != 0) { logging("Error %d while receiving packet from decoder: %s", response, av_err2str(response)); return -1;}
-    }
-    av_packet_unref(output_packet);
-    av_packet_free(&output_packet);
-    return 0;
-}
-
-int transcode_audio(StreamingContext *decoder, StreamingContext *encoder, AVPacket *input_packet, AVFrame *input_frame) {
-    int response = avcodec_send_packet(decoder->audio_avcc, input_packet);
-    if (response < 0) {logging("Error while sending packet to decoder: %s", av_err2str(response)); return response;}
-
-    while (response >= 0) {
-        response = avcodec_receive_frame(decoder->audio_avcc, input_frame);
-        if (response == AVERROR(EAGAIN) || response == AVERROR_EOF) {
-            break;
-        } else if (response < 0) {
-            logging("Error while receiving frame from decoder: %s", av_err2str(response));
-            return response;
-        }
-
-        if (response >= 0) {
-            if (encode_audio(decoder, encoder, input_frame)) return -1;
-        }
-        av_frame_unref(input_frame);
-    }
     return 0;
 }
 
@@ -313,7 +239,7 @@ int main(int argc, char *argv[])
     decoder->filename = "small_bunny_1080p_60fps.mp4";
 
     StreamingContext *encoder = (StreamingContext*) calloc(1, sizeof(StreamingContext));
-    encoder->filename = "argv.mp4";
+    encoder->filename = "argv.webm";
 
 //    if (sp.output_extension)
 //        strcat(encoder->filename, sp.output_extension);
