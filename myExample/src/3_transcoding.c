@@ -10,7 +10,6 @@
 #include "video_debugging.h"
 
 typedef struct StreamingParams {
-    char copy_video;
     char *output_extension;
     char *muxer_opt_key;
     char *muxer_opt_value;
@@ -228,7 +227,6 @@ int main(int argc, char *argv[])
    * MP4 - WebM
    */
       StreamingParams sp = {0};
-      sp.copy_video = 0;
       sp.video_codec = "libvpx-vp9";
       sp.audio_codec = "vorbis"; //https://trac.ffmpeg.org/ticket/10571
       sp.output_extension = ".webm";
@@ -248,12 +246,8 @@ int main(int argc, char *argv[])
     avformat_alloc_output_context2(&encoder->avfc, NULL, NULL, encoder->filename);
     if (!encoder->avfc) {logging("could not allocate memory for output format");return -1;}
 
-    if (!sp.copy_video) {
-        AVRational input_framerate = av_guess_frame_rate(decoder->avfc, decoder->video_avs, NULL);
-        prepare_video_encoder(encoder, decoder->video_avcc, input_framerate, sp);
-    } else {
-        if (prepare_copy(encoder->avfc, &encoder->video_avs, decoder->video_avs->codecpar)) {return -1;}
-    }
+    AVRational input_framerate = av_guess_frame_rate(decoder->avfc, decoder->video_avs, NULL);
+    prepare_video_encoder(encoder, decoder->video_avcc, input_framerate, sp);
 
     if (encoder->avfc->oformat->flags & AVFMT_GLOBALHEADER)
         encoder->avfc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -282,13 +276,9 @@ int main(int argc, char *argv[])
     while (av_read_frame(decoder->avfc, input_packet) >= 0)
     {
         if (decoder->avfc->streams[input_packet->stream_index]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-            if (!sp.copy_video) {
-                // TODO: refactor to be generic for audio and video (receiving a function pointer to the differences)
-                if (transcode_video(decoder, encoder, input_packet, input_frame)) return -1;
-                av_packet_unref(input_packet);
-            } else {
-                if (remux(&input_packet, &encoder->avfc, decoder->video_avs->time_base, encoder->video_avs->time_base)) return -1;
-            }
+            // TODO: refactor to be generic for audio and video (receiving a function pointer to the differences)
+            if (transcode_video(decoder, encoder, input_packet, input_frame)) return -1;
+            av_packet_unref(input_packet);
         } else if (decoder->avfc->streams[input_packet->stream_index]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)  {
         } else {
             logging("ignoring all non video or audio packets");
