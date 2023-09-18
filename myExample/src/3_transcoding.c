@@ -11,7 +11,6 @@
 
 typedef struct StreamingParams {
     char copy_video;
-    char copy_audio;
     char *output_extension;
     char *muxer_opt_key;
     char *muxer_opt_value;
@@ -229,7 +228,6 @@ int main(int argc, char *argv[])
    * MP4 - WebM
    */
       StreamingParams sp = {0};
-      sp.copy_audio = 0;
       sp.copy_video = 0;
       sp.video_codec = "libvpx-vp9";
       sp.audio_codec = "vorbis"; //https://trac.ffmpeg.org/ticket/10571
