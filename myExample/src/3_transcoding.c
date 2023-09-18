@@ -65,10 +65,6 @@ int prepare_decoder(StreamingContext *sc) {
 
             if (fill_stream_info(sc->video_avs, &sc->video_avc, &sc->video_avcc)) {return -1;}
         } else if (sc->avfc->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-            sc->audio_avs = sc->avfc->streams[i];
-            sc->audio_index = i;
-
-            if (fill_stream_info(sc->audio_avs, &sc->audio_avc, &sc->audio_avcc)) {return -1;}
         } else {
             logging("skipping streams other than audio and video");
         }
@@ -114,8 +110,7 @@ int prepare_video_encoder(StreamingContext *sc, AVCodecContext *decoder_ctx, AVR
 int prepare_audio_encoder(StreamingContext *sc, int sample_rate, StreamingParams sp){
     sc->audio_avs = avformat_new_stream(sc->avfc, NULL);
 
-    sc->audio_avc = avcodec_find_encoder_by_name("libvorbis");
-   // sc->audio_avc = avcodec_find_encoder(AV_CODEC_ID_VORBIS);
+    sc->audio_avc = avcodec_find_encoder_by_name(sp.audio_codec);
     if (!sc->audio_avc) {logging("could not find the proper codec"); return -1;}
 
     sc->audio_avcc = avcodec_alloc_context3(sc->audio_avc);
@@ -311,7 +306,7 @@ int main(int argc, char *argv[])
       sp.copy_audio = 0;
       sp.copy_video = 0;
       sp.video_codec = "libvpx-vp9";
-      sp.audio_codec = "libopus";
+      sp.audio_codec = "vorbis"; //https://trac.ffmpeg.org/ticket/10571
       sp.output_extension = ".webm";
 
     StreamingContext *decoder = (StreamingContext*) calloc(1, sizeof(StreamingContext));
@@ -334,12 +329,6 @@ int main(int argc, char *argv[])
         prepare_video_encoder(encoder, decoder->video_avcc, input_framerate, sp);
     } else {
         if (prepare_copy(encoder->avfc, &encoder->video_avs, decoder->video_avs->codecpar)) {return -1;}
-    }
-
-    if (!sp.copy_audio) {
-        if (prepare_audio_encoder(encoder, decoder->audio_avcc->sample_rate, sp)) {return -1;}
-    } else {
-        if (prepare_copy(encoder->avfc, &encoder->audio_avs, decoder->audio_avs->codecpar)) {return -1;}
     }
 
     if (encoder->avfc->oformat->flags & AVFMT_GLOBALHEADER)
@@ -377,12 +366,6 @@ int main(int argc, char *argv[])
                 if (remux(&input_packet, &encoder->avfc, decoder->video_avs->time_base, encoder->video_avs->time_base)) return -1;
             }
         } else if (decoder->avfc->streams[input_packet->stream_index]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)  {
-            if (!sp.copy_audio) {
-                if (transcode_audio(decoder, encoder, input_packet, input_frame)) return -1;
-                av_packet_unref(input_packet);
-            } else {
-                if (remux(&input_packet, &encoder->avfc, decoder->audio_avs->time_base, encoder->audio_avs->time_base)) return -1;
-            }
         } else {
             logging("ignoring all non video or audio packets");
         }
@@ -413,7 +396,6 @@ int main(int argc, char *argv[])
     avformat_free_context(encoder->avfc); encoder->avfc = NULL;
 
     avcodec_free_context(&decoder->video_avcc); decoder->video_avcc = NULL;
-    avcodec_free_context(&decoder->audio_avcc); decoder->audio_avcc = NULL;
 
     free(decoder); decoder = NULL;
     free(encoder); encoder = NULL;
