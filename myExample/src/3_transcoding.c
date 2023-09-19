@@ -223,7 +223,7 @@ int main(int argc, char *argv[])
 
     /*
    * H264 -> VP9
-   * Audio -> Vorbis
+   * ffmpeg -i small_bunny_1080p_60fps.mp4 -c:v libvpx-vp9 -minrate 110k -b:v 2000k -maxrate 2800k -bsf vp9_superframe -an small_bunny_1080p_60fps.webm
    * MP4 - WebM
    */
       StreamingParams sp = {0};
