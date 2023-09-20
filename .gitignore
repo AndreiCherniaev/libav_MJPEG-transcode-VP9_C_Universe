@@ -62,3 +62,5 @@ compile_commands.json
 
 *_qmlcache.qrc
 *.webm
+filterExample/input.yuvj422p
+filterExample/small_bunny_1080p_60fps.mp4
