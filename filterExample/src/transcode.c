@@ -456,29 +456,6 @@ static int flush_encoder()
     return encode_write_frame(1);
 }
 
-int encode(AVFormatContext *avfc, AVStream *dec_video_avs, AVStream *enc_video_avs, AVCodecContext *video_avcc, int index) {
-    AVPacket *output_packet = av_packet_alloc();
-    int response = avcodec_send_frame(video_avcc, stream_ctx[0].dec_frame);
-
-    while (response >= 0) {
-        response = avcodec_receive_packet(video_avcc, output_packet);
-        if (response == AVERROR(EAGAIN) || response == AVERROR_EOF) {
-            break;
-        } else if (response < 0) {
-            return -1;
-        }
-
-        output_packet->stream_index = index;
-        output_packet->duration = enc_video_avs->time_base.den / enc_video_avs->time_base.num / dec_video_avs->avg_frame_rate.num * dec_video_avs->avg_frame_rate.den;
-
-        av_packet_rescale_ts(output_packet, dec_video_avs->time_base, enc_video_avs->time_base);
-        response = av_interleaved_write_frame(avfc, output_packet);
-    }
-    av_packet_unref(output_packet);
-    av_packet_free(&output_packet);
-    return 0;
-}
-
 int main(int argc, char **argv)
 {
     int ret;
@@ -488,7 +465,7 @@ int main(int argc, char **argv)
     //        av_log(NULL, AV_LOG_ERROR, "Usage: %s <input file> <output file>\n", argv[0]);
     //        return 1;
     //    }
-    const char * const in_filename= "input.yuvj422p";
+    const char * const in_filename= "input.yuvj420p";
     const char * const out_filename = "VideoOut.webm";
 
     if ((ret = open_input_file(in_filename)) < 0)
@@ -527,8 +504,7 @@ int main(int argc, char **argv)
                 goto end;
 
             stream->dec_frame->pts = stream->dec_frame->best_effort_timestamp;
-            ret = encode(ofmt_ctx, ifmt_ctx->streams[0], ofmt_ctx->streams[0], stream->dec_ctx, packet->stream_index);
-            //ret = filter_encode_write_frame(stream->dec_frame);
+            ret = filter_encode_write_frame(stream->dec_frame);
             if (ret < 0)
                 goto end;
         }
@@ -558,12 +534,12 @@ int main(int argc, char **argv)
             goto end;
     }
 
-//    /* flush filter */
-//    ret = filter_encode_write_frame(NULL);
-//    if (ret < 0) {
-//        av_log(NULL, AV_LOG_ERROR, "Flushing filter failed\n");
-//        goto end;
-//    }
+    /* flush filter */
+    ret = filter_encode_write_frame(NULL);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Flushing filter failed\n");
+        goto end;
+    }
 
     /* flush encoder */
     ret = flush_encoder();
