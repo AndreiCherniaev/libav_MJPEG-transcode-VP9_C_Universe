@@ -258,45 +258,40 @@ static int init_filter(FilteringContext* fctx, AVCodecContext *dec_ctx,
         goto end;
     }
 
-    if (dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO) {
-        buffersrc = avfilter_get_by_name("buffer");
-        buffersink = avfilter_get_by_name("buffersink");
-        if (!buffersrc || !buffersink) {
-            av_log(NULL, AV_LOG_ERROR, "filtering source or sink element not found\n");
-            ret = AVERROR_UNKNOWN;
-            goto end;
-        }
-
-        snprintf(args, sizeof(args),
-                 "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d",
-                 dec_ctx->width, dec_ctx->height, dec_ctx->pix_fmt,
-                 dec_ctx->pkt_timebase.num, dec_ctx->pkt_timebase.den,
-                 dec_ctx->sample_aspect_ratio.num,
-                 dec_ctx->sample_aspect_ratio.den);
-
-        ret = avfilter_graph_create_filter(&buffersrc_ctx, buffersrc, "in",
-                                           args, NULL, filter_graph);
-        if (ret < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Cannot create buffer source\n");
-            goto end;
-        }
-
-        ret = avfilter_graph_create_filter(&buffersink_ctx, buffersink, "out",
-                                           NULL, NULL, filter_graph);
-        if (ret < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Cannot create buffer sink\n");
-            goto end;
-        }
-
-        ret = av_opt_set_bin(buffersink_ctx, "pix_fmts",
-                             (uint8_t*)&enc_ctx->pix_fmt, sizeof(enc_ctx->pix_fmt),
-                             AV_OPT_SEARCH_CHILDREN);
-        if (ret < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Cannot set output pixel format\n");
-            goto end;
-        }
-    }else {
+    buffersrc = avfilter_get_by_name("buffer");
+    buffersink = avfilter_get_by_name("buffersink");
+    if (!buffersrc || !buffersink) {
+        av_log(NULL, AV_LOG_ERROR, "filtering source or sink element not found\n");
         ret = AVERROR_UNKNOWN;
+        goto end;
+    }
+
+    snprintf(args, sizeof(args),
+             "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d",
+             dec_ctx->width, dec_ctx->height, dec_ctx->pix_fmt,
+             dec_ctx->pkt_timebase.num, dec_ctx->pkt_timebase.den,
+             dec_ctx->sample_aspect_ratio.num,
+             dec_ctx->sample_aspect_ratio.den);
+
+    ret = avfilter_graph_create_filter(&buffersrc_ctx, buffersrc, "in",
+                                       args, NULL, filter_graph);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Cannot create buffer source\n");
+        goto end;
+    }
+
+    ret = avfilter_graph_create_filter(&buffersink_ctx, buffersink, "out",
+                                       NULL, NULL, filter_graph);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Cannot create buffer sink\n");
+        goto end;
+    }
+
+    ret = av_opt_set_bin(buffersink_ctx, "pix_fmts",
+                         (uint8_t*)&enc_ctx->pix_fmt, sizeof(enc_ctx->pix_fmt),
+                         AV_OPT_SEARCH_CHILDREN);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Cannot set output pixel format\n");
         goto end;
     }
 
