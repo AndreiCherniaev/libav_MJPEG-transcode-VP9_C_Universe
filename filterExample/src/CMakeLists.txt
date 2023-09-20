@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 
-project(DokrExample LANGUAGES C)
+project(fExample LANGUAGES C)
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -27,9 +27,7 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
 )
 
 add_executable(${PROJECT_NAME}
-    #transcode.c
-    3_transcoding.c
-    video_debugging.c
+    transcode.c
 )
 
 target_include_directories( ${PROJECT_NAME} PUBLIC
