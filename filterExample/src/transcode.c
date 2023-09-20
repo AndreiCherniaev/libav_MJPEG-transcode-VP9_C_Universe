@@ -38,6 +38,7 @@
 #include <libavutil/channel_layout.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
+#include <libswscale/swscale.h>
 
 static AVFormatContext *ifmt_ctx;
 static AVFormatContext *ofmt_ctx;
@@ -60,6 +61,8 @@ typedef struct StreamContext {
 static StreamContext *stream_ctx;
 StreamContext *stream;
 AVPacket *packet = NULL;
+
+struct SwsContext *swsContext;
 
 static int open_input_file(const char *filename)
 {
@@ -369,7 +372,7 @@ static int init_filters(void)
 static int encode_write_frame(int flush)
 {
     FilteringContext *filter = &filter_ctx[0];
-    AVFrame *filt_frame = flush ? NULL : filter->filtered_frame;
+    AVFrame * const filt_frame = flush ? NULL : filter->filtered_frame;
     AVPacket *enc_pkt = filter->enc_pkt;
     int ret;
 
@@ -377,11 +380,33 @@ static int encode_write_frame(int flush)
     /* encode filtered frame */
     av_packet_unref(enc_pkt);
 
-    if (filt_frame && filt_frame->pts != AV_NOPTS_VALUE)
-        filt_frame->pts = av_rescale_q(filt_frame->pts, filt_frame->time_base,
-                                       stream->enc_ctx->time_base);
 
-    ret = avcodec_send_frame(stream->enc_ctx, filt_frame);
+    /* do the conversion */
+    if(filt_frame){
+        AVFrame *dstframe = av_frame_alloc();
+        if(!dstframe)
+            return AVERROR(ENOMEM);
+        dstframe->format = AV_PIX_FMT_YUVJ420P; /* choose not the same format set on sws_getContext() */
+        dstframe->width  = stream_ctx->enc_ctx->width; /* must match sizes as on sws_getContext() */
+        dstframe->height = stream_ctx->enc_ctx->height; /* must match sizes as on sws_getContext() */
+        ret = av_frame_get_buffer(dstframe, 32);
+        if (ret < 0){
+            fprintf(stderr, "Error: could not allocate the video frame data\n");
+            exit(EXIT_FAILURE);
+        }
+        ret = sws_scale(swsContext,   /* SwsContext* on step (1) */
+            filt_frame->data,         /* srcSlice[] from decoded AVFrame */
+            filt_frame->linesize,     /* srcStride[] from decoded AVFrame */
+            0,                      /* srcSliceY   */
+            stream_ctx->enc_ctx->height,       /* srcSliceH  from decoded AVFrame */
+            dstframe->data,         /* dst[]       */
+            dstframe->linesize);    /* dstStride[] */
+        //if (filt_frame && filt_frame->pts != AV_NOPTS_VALUE)
+            dstframe->pts = av_rescale_q(dstframe->pts, dstframe->time_base, stream->enc_ctx->time_base);
+        ret = avcodec_send_frame(stream->enc_ctx, dstframe);
+    }else{
+        ret = avcodec_send_frame(stream->enc_ctx, filt_frame);
+    }
 
     if (ret < 0)
         return ret;
@@ -465,7 +490,7 @@ int main(int argc, char **argv)
     //        av_log(NULL, AV_LOG_ERROR, "Usage: %s <input file> <output file>\n", argv[0]);
     //        return 1;
     //    }
-    const char * const in_filename= "input.yuvj420p";
+    const char * const in_filename= "input.yuvj422p";
     const char * const out_filename = "VideoOut.webm";
 
     if ((ret = open_input_file(in_filename)) < 0)
@@ -478,6 +503,12 @@ int main(int argc, char **argv)
         goto end;
 
     stream = &stream_ctx[0];
+
+    swsContext = sws_getContext(stream_ctx->enc_ctx->width, stream_ctx->enc_ctx->height, AV_PIX_FMT_YUVJ422P,
+                                stream_ctx->enc_ctx->width, stream_ctx->enc_ctx->height, AV_PIX_FMT_YUVJ420P,
+                                SWS_BILINEAR, NULL, NULL, NULL);
+    if (!swsContext)
+        return AVERROR(ENOMEM);
 
     /* read all packets */
     while (1) {
