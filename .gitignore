@@ -63,3 +63,4 @@ compile_commands.json
 *_qmlcache.qrc
 *.webm
 *.mp4
+filterExample/input.yuvj422p
