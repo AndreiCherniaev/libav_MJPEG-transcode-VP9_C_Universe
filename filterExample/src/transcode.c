@@ -159,7 +159,7 @@ static int open_output_file(const char *filename)
     if (dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO
         || dec_ctx->codec_type == AVMEDIA_TYPE_AUDIO) {
         /* in this example, we choose transcoding to same codec */
-        encoder = avcodec_find_encoder(AV_CODEC_ID_VP9);
+        encoder = avcodec_find_encoder(AV_CODEC_ID_H264);
         if (!encoder) {
             av_log(NULL, AV_LOG_FATAL, "Necessary encoder not found\n");
             return AVERROR_INVALIDDATA;
@@ -181,7 +181,7 @@ static int open_output_file(const char *filename)
             if (encoder->pix_fmts)
                 enc_ctx->pix_fmt = encoder->pix_fmts[0];
             else
-                enc_ctx->pix_fmt = dec_ctx->pix_fmt;
+                enc_ctx->pix_fmt = AV_PIX_FMT_YUV420P;//dec_ctx->pix_fmt;
             /* video time_base can be set to whatever is handy and supported by encoder */
             enc_ctx->time_base = av_inv_q(dec_ctx->framerate);
             //enc_ctx->color_primaries= AVCOL_PRI_BT709;
@@ -192,7 +192,11 @@ static int open_output_file(const char *filename)
             enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
         AVDictionary* opt = NULL;
-        av_dict_set(&opt, "crf", "20", 0);
+        av_dict_set(&opt, "profile", "high", 0);
+        av_dict_set(&opt, "c:v", "libopenh264", 0);
+        av_dict_set(&opt, "b:v", "4000000", 0);
+        av_dict_set(&opt, "allow_skip_frames", "1", 0);
+        av_dict_set(&opt, "maxrate", "7500000", 0);
         /* Third parameter can be used to pass settings to encoder */
         ret = avcodec_open2(enc_ctx, encoder, &opt);
         if (ret < 0) {
@@ -460,8 +464,8 @@ int main(int argc, char **argv)
     //        av_log(NULL, AV_LOG_ERROR, "Usage: %s <input file> <output file>\n", argv[0]);
     //        return 1;
     //    }
-    const char * const in_filename= "input.yuvj422p";
-    const char * const out_filename = "VideoOut.webm";
+    const char * const in_filename= "input.yuvj420p";
+    const char * const out_filename = "VideoOut.mkv";
 
     if ((ret = open_input_file(in_filename)) < 0)
         goto end;
