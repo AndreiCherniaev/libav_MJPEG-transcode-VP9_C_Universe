@@ -15,11 +15,9 @@ PATH="../bin:$PATH" PKG_CONFIG_PATH="${PWD}/lib/pkgconfig" ../FFmpeg/configure \
   --extra-libs="-lpthread -lm" \
   --ld="g++" \
   --enable-gpl \
-  --enable-nonfree \
   --bindir="../bin" \
   --disable-x86asm \
-  --enable-libx265 \
-  --enable-libvpx \
+  --enable-libopenh264 \
   --enable-shared \
   #--enable-static \
   --disable-ffplay \
@@ -28,10 +26,8 @@ PATH="../bin:$PATH" PKG_CONFIG_PATH="${PWD}/lib/pkgconfig" ../FFmpeg/configure \
   #--disable-swresample \
   #--disable-decoders \
   --disable-doc \
+  --enable-swscale \
   --disable-encoders \
-  --enable-encoder=libvpx-vp9 \
-  --enable-libvorbis \
-  --enable-encoder=libx265 \
   --enable-encoder=mjpeg
 PATH="../bin:$PATH" make -j16
 make install

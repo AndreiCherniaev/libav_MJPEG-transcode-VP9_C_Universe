@@ -137,7 +137,7 @@ static int open_output_file(const char *filename)
     AVStream *out_stream;
     AVStream *in_stream;
     AVCodecContext *dec_ctx, *enc_ctx;
-    const AVCodec *encoder;
+    const AVCodec *reg_encoder;
     int ret;
 
     ofmt_ctx = NULL;
@@ -159,12 +159,12 @@ static int open_output_file(const char *filename)
     if (dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO
         || dec_ctx->codec_type == AVMEDIA_TYPE_AUDIO) {
         /* in this example, we choose transcoding to same codec */
-        encoder = avcodec_find_encoder(AV_CODEC_ID_H264);
-        if (!encoder) {
+        reg_encoder = avcodec_find_encoder(AV_CODEC_ID_H264);
+        if (!reg_encoder) {
             av_log(NULL, AV_LOG_FATAL, "Necessary encoder not found\n");
             return AVERROR_INVALIDDATA;
         }
-        enc_ctx = avcodec_alloc_context3(encoder);
+        enc_ctx = avcodec_alloc_context3(reg_encoder);
         if (!enc_ctx) {
             av_log(NULL, AV_LOG_FATAL, "Failed to allocate the encoder context\n");
             return AVERROR(ENOMEM);
@@ -178,8 +178,8 @@ static int open_output_file(const char *filename)
             enc_ctx->width = dec_ctx->width;
             enc_ctx->sample_aspect_ratio = dec_ctx->sample_aspect_ratio;
             /* take first format from list of supported formats */
-            if (encoder->pix_fmts)
-                enc_ctx->pix_fmt = encoder->pix_fmts[0];
+            if (reg_encoder->pix_fmts)
+                enc_ctx->pix_fmt = reg_encoder->pix_fmts[0];
             else
                 enc_ctx->pix_fmt = AV_PIX_FMT_YUV420P;//dec_ctx->pix_fmt;
             /* video time_base can be set to whatever is handy and supported by encoder */
@@ -198,7 +198,7 @@ static int open_output_file(const char *filename)
         av_dict_set(&opt, "allow_skip_frames", "1", 0);
         av_dict_set(&opt, "maxrate", "7500000", 0);
         /* Third parameter can be used to pass settings to encoder */
-        ret = avcodec_open2(enc_ctx, encoder, &opt);
+        ret = avcodec_open2(enc_ctx, reg_encoder, &opt);
         if (ret < 0) {
             av_log(NULL, AV_LOG_ERROR, "Cannot open video encoder for stream #%u\n", 0);
             return ret;

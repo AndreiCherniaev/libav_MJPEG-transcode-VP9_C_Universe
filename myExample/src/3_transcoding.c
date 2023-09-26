@@ -13,8 +13,8 @@ typedef struct StreamingParams {
     char *output_extension;
     char *muxer_opt_key;
     char *muxer_opt_value;
-    char *video_codec;
-    char *audio_codec;
+    //char *video_codec;
+    //char *audio_codec;
     char *codec_priv_key;
     char *codec_priv_value;
 } StreamingParams;
@@ -22,15 +22,14 @@ typedef struct StreamingParams {
 typedef struct StreamingContext {
     AVFormatContext *avfc;
     AVCodec *video_avc;
-    AVCodec *audio_avc;
     AVStream *video_avs;
-    AVStream *audio_avs;
     AVCodecContext *video_avcc;
-    AVCodecContext *audio_avcc;
     int video_index;
-    int audio_index;
     char *filename;
 } StreamingContext;
+
+StreamingContext *decoder;
+StreamingContext *encoder;
 
 int fill_stream_info(AVStream *avs, AVCodec **avc, AVCodecContext **avcc) {
     *avc = avcodec_find_decoder(avs->codecpar->codec_id);
@@ -74,13 +73,17 @@ int prepare_decoder(StreamingContext *sc) {
 int prepare_video_encoder(StreamingContext *sc, AVCodecContext *decoder_ctx, AVRational input_framerate, StreamingParams sp) {
     sc->video_avs = avformat_new_stream(sc->avfc, NULL);
 
-    sc->video_avc = avcodec_find_encoder_by_name(sp.video_codec);
+    //sc->video_avc = avcodec_find_encoder(AV_CODEC_ID_H264); //
+    sc->video_avc = avcodec_find_encoder_by_name("libopenh264");
     if (!sc->video_avc) {logging("could not find the proper codec"); return -1;}
 
     sc->video_avcc = avcodec_alloc_context3(sc->video_avc);
     if (!sc->video_avcc) {logging("could not allocated memory for codec context"); return -1;}
 
-    av_opt_set(sc->video_avcc->priv_data, "preset", "fast", 0);
+    av_opt_set(sc->video_avcc->priv_data, "profile", "high", 0);
+    av_opt_set(sc->video_avcc->priv_data, "b", "4000000", 0);
+    av_opt_set(sc->video_avcc->priv_data, "allow_skip_frames", "1", 0);
+    av_opt_set(sc->video_avcc->priv_data, "maxrate", "7500000", 0);
     if (sp.codec_priv_key && sp.codec_priv_value)
         av_opt_set(sc->video_avcc->priv_data, sp.codec_priv_key, sp.codec_priv_value, 0);
 
@@ -92,16 +95,129 @@ int prepare_video_encoder(StreamingContext *sc, AVCodecContext *decoder_ctx, AVR
     else
         sc->video_avcc->pix_fmt = decoder_ctx->pix_fmt;
 
-    sc->video_avcc->bit_rate = 2 * 1000 * 1000;
-    sc->video_avcc->rc_buffer_size = 4 * 1000 * 1000;
-    sc->video_avcc->rc_max_rate = 2 * 1000 * 1000;
-    sc->video_avcc->rc_min_rate = 2.5 * 1000 * 1000;
-
+    //sc->video_avcc->bit_rate = 2 * 1000 * 1000; //4000000 or 7500000 ?
+//    sc->video_avcc->rc_buffer_size = 4 * 1000 * 1000;
+//    sc->video_avcc->rc_max_rate = 2 * 1000 * 1000;
+//    sc->video_avcc->rc_min_rate = 2.5 * 1000 * 1000;
     sc->video_avcc->time_base = av_inv_q(input_framerate);
     sc->video_avs->time_base = sc->video_avcc->time_base;
 
     if (avcodec_open2(sc->video_avcc, sc->video_avc, NULL) < 0) {logging("could not open the codec"); return -1;}
     avcodec_parameters_from_context(sc->video_avs->codecpar, sc->video_avcc);
+    return 0;
+}
+
+static int open_output_file(const char *filename)
+{
+    //AVStream *out_stream; = encoder->video_avs
+    //AVStream *in_stream; = decoder->video_avs
+    //AVCodecContext *dec_ctx, *enc_ctx;
+    //const AVCodec *reg_encoder;//encoder->video_avc
+    int ret;
+
+    encoder->avfc = NULL;//encoder->avfc
+    avformat_alloc_output_context2(&encoder->avfc, NULL, NULL, filename);
+    if (!encoder->avfc) {
+        av_log(NULL, AV_LOG_ERROR, "Could not create output context\n");
+        return AVERROR_UNKNOWN;
+    }
+    encoder->video_avs = avformat_new_stream(encoder->avfc, NULL);
+    if (!encoder->video_avs) {
+        av_log(NULL, AV_LOG_ERROR, "Failed allocating output stream\n");
+        return AVERROR_UNKNOWN;
+    }
+    //ifmt_ctx = decoder->avfc
+    //dec_ctx = decoder->video_avcc;//stream_ctx[0].dec_ctx;
+    if (decoder->video_avcc->codec_type == AVMEDIA_TYPE_VIDEO
+        || decoder->video_avcc->codec_type == AVMEDIA_TYPE_AUDIO) {
+        /* in this example, we choose transcoding to same codec */
+        encoder->video_avc = avcodec_find_encoder(AV_CODEC_ID_H264);
+        if (!encoder->video_avc) {
+            av_log(NULL, AV_LOG_FATAL, "Necessary encoder not found\n");
+            return AVERROR_INVALIDDATA;
+        }
+        //enc_ctx = encoder->video_avcc
+        encoder->video_avcc = avcodec_alloc_context3(encoder->video_avc);
+        if (!encoder->video_avcc) {
+            av_log(NULL, AV_LOG_FATAL, "Failed to allocate the encoder context\n");
+            return AVERROR(ENOMEM);
+        }
+
+        /* In this example, we transcode to same properties (picture size,
+         * sample rate etc.). These properties can be changed for output
+         * streams easily using filters */
+        if (decoder->video_avcc->codec_type == AVMEDIA_TYPE_VIDEO) {
+            encoder->video_avcc->height = decoder->video_avcc->height;
+            encoder->video_avcc->width = decoder->video_avcc->width;
+            encoder->video_avcc->sample_aspect_ratio = decoder->video_avcc->sample_aspect_ratio;
+            /* take first format from list of supported formats */
+            if (encoder->video_avc->pix_fmts)
+                encoder->video_avcc->pix_fmt = encoder->video_avc->pix_fmts[0];
+            else
+                encoder->video_avcc->pix_fmt = AV_PIX_FMT_YUV420P;//dec_ctx->pix_fmt;
+            /* video time_base can be set to whatever is handy and supported by encoder */
+            encoder->video_avcc->time_base = av_inv_q(decoder->video_avcc->framerate);
+            //enc_ctx->color_primaries= AVCOL_PRI_BT709;
+            //enc_ctx->bit_rate= 2000000; //means
+        }
+
+        if (encoder->avfc->oformat->flags & AVFMT_GLOBALHEADER)
+            encoder->video_avcc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+
+        /* Third parameter can be used to pass settings to encoder */
+        AVDictionary* opt = NULL;
+        av_dict_set(&opt, "c", "libopenh264", 0);//c:v
+        av_dict_set(&opt, "profile", "high", 0);
+        av_dict_set(&opt, "b", "4000000", 0);//b:v
+        av_dict_set(&opt, "allow_skip_frames", "1", 0);
+        av_dict_set(&opt, "maxrate", "7500000", 0);
+
+        AVRational input_framerate = {198, 10};
+        encoder->video_avcc->time_base = av_inv_q(input_framerate); //tbc = the time base in AVCodecContext for the codec used for a particular stream
+        encoder->video_avs->time_base = encoder->video_avcc->time_base; //tbn = the time base in AVStream that has come from the container
+
+        ret = avcodec_open2(encoder->video_avcc, encoder->video_avc, &opt);
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Cannot open video encoder for stream #%u\n", 0);
+            return ret;
+        }
+        ret = avcodec_parameters_from_context(encoder->video_avs->codecpar, encoder->video_avcc);
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Failed to copy encoder parameters to output stream #%u\n", 0);
+            return ret;
+        }
+
+        //stream_ctx[0].enc_ctx = encoder->video_avcc;
+    } else if (decoder->video_avcc->codec_type == AVMEDIA_TYPE_UNKNOWN) {
+        av_log(NULL, AV_LOG_FATAL, "Elementary stream #%d is of unknown type, cannot proceed\n", 0);
+        return AVERROR_INVALIDDATA;
+    } else {
+        /* if this stream must be remuxed */
+        ret = avcodec_parameters_copy(encoder->video_avs->codecpar, decoder->video_avs->codecpar);
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Copying parameters for stream #%u failed\n", 0);
+            return ret;
+        }
+        //mistake: encoder->video_avs->time_base = decoder->video_avs->time_base;
+    }
+
+    av_dump_format(encoder->avfc, 0, filename, 1);
+
+    if (!(encoder->avfc->oformat->flags & AVFMT_NOFILE)) {
+        ret = avio_open(&encoder->avfc->pb, filename, AVIO_FLAG_WRITE);
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Could not open output file '%s'", filename);
+            return ret;
+        }
+    }
+
+    /* init muxer, write output file header */
+    ret = avformat_write_header(encoder->avfc, NULL);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Error occurred when opening output file\n");
+        return ret;
+    }
+
     return 0;
 }
 
@@ -186,9 +302,7 @@ int main(int argc, char *argv[])
    * Audio -> remuxed (untouched)
    * MP4 - MP4
    */
-    //StreamingParams sp = {0};
-    //sp.copy_audio = 1;
-    //sp.copy_video = 0;
+    StreamingParams sp = {0};
     //sp.video_codec = "libx264";
     //sp.codec_priv_key = "x264-params";
     //sp.codec_priv_value = "keyint=60:min-keyint=60:scenecut=0:force-cfr=1";
@@ -226,16 +340,16 @@ int main(int argc, char *argv[])
    * ffmpeg -i small_bunny_1080p_60fps.mp4 -c:v libvpx-vp9 -minrate 110k -b:v 2000k -maxrate 2800k -bsf vp9_superframe -an small_bunny_1080p_60fps.webm
    * MP4 - WebM
    */
-      StreamingParams sp = {0};
-      sp.video_codec = "libvpx-vp9";
-      sp.audio_codec = "vorbis"; //https://trac.ffmpeg.org/ticket/10571
-      sp.output_extension = ".webm";
+//      StreamingParams sp = {0};
+//      sp.video_codec = "libvpx-vp9";
+//      sp.audio_codec = "vorbis"; //https://trac.ffmpeg.org/ticket/10571
+//      sp.output_extension = ".webm";
 
-    StreamingContext *decoder = (StreamingContext*) calloc(1, sizeof(StreamingContext));
-    decoder->filename = "small_bunny_1080p_60fps.mp4";
+    decoder = (StreamingContext*) calloc(1, sizeof(StreamingContext));
+    decoder->filename = "/home/a/mystorage/mnt_sda2_pseudo/2.3D printing video_2023.08.23.yuvj422p"; //"input.yuvj422p"; //"small_bunny_1080p_60fps.mp4";
 
-    StreamingContext *encoder = (StreamingContext*) calloc(1, sizeof(StreamingContext));
-    encoder->filename = "argv.webm";
+    encoder = (StreamingContext*) calloc(1, sizeof(StreamingContext));
+    encoder->filename = "argv.mkv";
 
 //    if (sp.output_extension)
 //        strcat(encoder->filename, sp.output_extension);
@@ -243,21 +357,24 @@ int main(int argc, char *argv[])
     if (open_media(decoder->filename, &decoder->avfc)) return -1;
     if (prepare_decoder(decoder)) return -1;
 
-    avformat_alloc_output_context2(&encoder->avfc, NULL, NULL, encoder->filename);
-    if (!encoder->avfc) {logging("could not allocate memory for output format");return -1;}
+    open_output_file(encoder->filename);
+//    avformat_alloc_output_context2(&encoder->avfc, NULL, NULL, encoder->filename);
+//    if (!encoder->avfc) {logging("could not allocate memory for output format");return -1;}
 
-    AVRational input_framerate = av_guess_frame_rate(decoder->avfc, decoder->video_avs, NULL);
-    prepare_video_encoder(encoder, decoder->video_avcc, input_framerate, sp);
+//    AVRational input_framerate = av_guess_frame_rate(decoder->avfc, decoder->video_avs, NULL);
+//    prepare_video_encoder(encoder, decoder->video_avcc, input_framerate, sp);
 
-    if (encoder->avfc->oformat->flags & AVFMT_GLOBALHEADER)
-        encoder->avfc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+//    if (encoder->avfc->oformat->flags & AVFMT_GLOBALHEADER)
+//        encoder->avfc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
-    if (!(encoder->avfc->oformat->flags & AVFMT_NOFILE)) {
-        if (avio_open(&encoder->avfc->pb, encoder->filename, AVIO_FLAG_WRITE) < 0) {
-            logging("could not open the output file");
-            return -1;
-        }
-    }
+//    if (!(encoder->avfc->oformat->flags & AVFMT_NOFILE)) {
+//        if (avio_open(&encoder->avfc->pb, encoder->filename, AVIO_FLAG_WRITE) < 0) {
+//            logging("could not open the output file");
+//            return -1;
+//        }
+//    }
+
+
 
     AVDictionary* muxer_opts = NULL;
 
