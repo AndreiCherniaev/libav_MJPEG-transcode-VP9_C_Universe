@@ -54,17 +54,20 @@ int open_media(const char *in_filename, AVFormatContext **avfc) {
     return 0;
 }
 
-int prepare_decoder(StreamingContext *sc) {
-    for (int i = 0; i < sc->avfc->nb_streams; i++) {
-        if (sc->avfc->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-            sc->video_avs = sc->avfc->streams[i];
-            sc->video_index = i;
+int prepare_decoder(StreamingContext *sc){
+    const int streams = sc->avfc->nb_streams; //should be 1
+    if(streams!= 1){
+        fprintf(stderr, "err Too much streams in inFile\n");
+        int ret = AVERROR_UNKNOWN;
+        return AVERROR(ret);
+    }
 
-            if (fill_stream_info(sc->video_avs, &sc->video_avc, &sc->video_avcc)) {return -1;}
-        } else if (sc->avfc->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-        } else {
-            logging("skipping streams other than audio and video");
-        }
+    if (sc->avfc->streams[0]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO){
+        sc->video_avs = sc->avfc->streams[0];
+        sc->video_index = 0;
+        if (fill_stream_info(sc->video_avs, &sc->video_avc, &sc->video_avcc)) {return -1;}
+    }else {
+        logging("skipping streams other than video");
     }
 
     return 0;
@@ -119,8 +122,9 @@ static int open_output_file(const char *filename)
             else
                 encoder->video_avcc->pix_fmt = AV_PIX_FMT_YUV420P;//dec_ctx->pix_fmt;
             /* video time_base can be set to whatever is handy and supported by encoder */
-            //encoder->video_avcc->time_base = av_inv_q(decoder->video_avcc->framerate);
-            encoder->video_avcc->color_primaries= AVCOL_PRI_BT470BG;
+            //encoder->video_avcc->color_primaries= AVCOL_PRI_BT470BG;
+            encoder->video_avcc->colorspace = AVCOL_SPC_BT470BG;
+            encoder->video_avcc->color_range = AVCOL_RANGE_MPEG;
             //enc_ctx->bit_rate= 2000000; //means
         }
 
@@ -135,7 +139,7 @@ static int open_output_file(const char *filename)
         av_dict_set(&opt, "allow_skip_frames", "1", 0);
         av_dict_set(&opt, "maxrate", "7500000", 0);
 
-        AVRational input_framerate = {6666, 1}; //for test
+        AVRational input_framerate = {1000, 1}; //tbn
         encoder->video_avcc->time_base = av_inv_q(input_framerate); //tbc = the time base in AVCodecContext for the codec used for a particular stream
         encoder->video_avs->time_base = encoder->video_avcc->time_base; //tbn = the time base in AVStream that has come from the container
 
