@@ -1,3 +1,5 @@
+//Thanks https://github.com/leandromoreira/ffmpeg-libav-tutorial/blob/master/3_transcoding.c
+
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/timestamp.h>
@@ -69,6 +71,8 @@ int prepare_decoder(StreamingContext *sc){
     }else {
         logging("skipping streams other than video");
     }
+
+    //doesn't work //sc->video_avcc->color_range = AVCOL_RANGE_JPEG;
 
     return 0;
 }
@@ -256,65 +260,7 @@ int transcode_video(StreamingContext *decoder, StreamingContext *encoder, AVPack
 
 int main(int argc, char *argv[])
 {
-    /*
-   * H264 -> H265
-   * Audio -> remuxed (untouched)
-   * MP4 - MP4
-   */
-//    StreamingParams sp = {0};
-//    sp.copy_audio = 1;
-//    sp.copy_video = 0;
-//    sp.video_codec = "libx265";
-//    sp.codec_priv_key = "x265-params";
-//    sp.codec_priv_value = "keyint=60:min-keyint=60:scenecut=0";
-
-    /*
-   * H264 -> H264 (fixed gop)
-   * Audio -> remuxed (untouched)
-   * MP4 - MP4
-   */
     StreamingParams sp = {0};
-    //sp.video_codec = "libx264";
-    //sp.codec_priv_key = "x264-params";
-    //sp.codec_priv_value = "keyint=60:min-keyint=60:scenecut=0:force-cfr=1";
-
-    /*
-   * H264 -> H264 (fixed gop)
-   * Audio -> remuxed (untouched)
-   * MP4 - fragmented MP4
-   */
-    //StreamingParams sp = {0};
-    //sp.copy_audio = 1;
-    //sp.copy_video = 0;
-    //sp.video_codec = "libx264";
-    //sp.codec_priv_key = "x264-params";
-    //sp.codec_priv_value = "keyint=60:min-keyint=60:scenecut=0:force-cfr=1";
-    //sp.muxer_opt_key = "movflags";
-    //sp.muxer_opt_value = "frag_keyframe+empty_moov+delay_moov+default_base_moof";
-
-    /*
-   * H264 -> H264 (fixed gop)
-   * Audio -> AAC
-   * MP4 - MPEG-TS
-   */
-    //StreamingParams sp = {0};
-    //sp.copy_audio = 0;
-    //sp.copy_video = 0;
-    //sp.video_codec = "libx264";
-    //sp.codec_priv_key = "x264-params";
-    //sp.codec_priv_value = "keyint=60:min-keyint=60:scenecut=0:force-cfr=1";
-    //sp.audio_codec = "aac";
-    //sp.output_extension = ".ts";
-
-    /*
-   * H264 -> VP9
-   * ffmpeg -i small_bunny_1080p_60fps.mp4 -c:v libvpx-vp9 -minrate 110k -b:v 2000k -maxrate 2800k -bsf vp9_superframe -an small_bunny_1080p_60fps.webm
-   * MP4 - WebM
-   */
-//      StreamingParams sp = {0};
-//      sp.video_codec = "libvpx-vp9";
-//      sp.audio_codec = "vorbis"; //https://trac.ffmpeg.org/ticket/10571
-//      sp.output_extension = ".webm";
 
     decoder = (StreamingContext*) calloc(1, sizeof(StreamingContext));
     //decoder->filename = "f5_20.yuvj422p";
@@ -331,23 +277,6 @@ int main(int argc, char *argv[])
     if (prepare_decoder(decoder)) return -1;
 
     open_output_file(encoder->filename);
-//    avformat_alloc_output_context2(&encoder->avfc, NULL, NULL, encoder->filename);
-//    if (!encoder->avfc) {logging("could not allocate memory for output format");return -1;}
-
-//    AVRational input_framerate = av_guess_frame_rate(decoder->avfc, decoder->video_avs, NULL);
-//    prepare_video_encoder(encoder, decoder->video_avcc, input_framerate, sp);
-
-//    if (encoder->avfc->oformat->flags & AVFMT_GLOBALHEADER)
-//        encoder->avfc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-
-//    if (!(encoder->avfc->oformat->flags & AVFMT_NOFILE)) {
-//        if (avio_open(&encoder->avfc->pb, encoder->filename, AVIO_FLAG_WRITE) < 0) {
-//            logging("could not open the output file");
-//            return -1;
-//        }
-//    }
-
-
 
     AVDictionary* muxer_opts = NULL;
 

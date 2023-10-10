@@ -1,3 +1,5 @@
+//Thanks https://github.com/leandromoreira/ffmpeg-libav-tutorial/blob/master/3_transcoding.c
+
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/timestamp.h>
