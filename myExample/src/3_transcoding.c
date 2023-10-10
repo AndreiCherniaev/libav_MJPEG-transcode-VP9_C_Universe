@@ -70,43 +70,6 @@ int prepare_decoder(StreamingContext *sc) {
     return 0;
 }
 
-int prepare_video_encoder(StreamingContext *sc, AVCodecContext *decoder_ctx, AVRational input_framerate, StreamingParams sp) {
-    sc->video_avs = avformat_new_stream(sc->avfc, NULL);
-
-    //sc->video_avc = avcodec_find_encoder(AV_CODEC_ID_H264); //
-    sc->video_avc = avcodec_find_encoder_by_name("libopenh264");
-    if (!sc->video_avc) {logging("could not find the proper codec"); return -1;}
-
-    sc->video_avcc = avcodec_alloc_context3(sc->video_avc);
-    if (!sc->video_avcc) {logging("could not allocated memory for codec context"); return -1;}
-
-    av_opt_set(sc->video_avcc->priv_data, "profile", "high", 0);
-    av_opt_set(sc->video_avcc->priv_data, "b", "4000000", 0);
-    av_opt_set(sc->video_avcc->priv_data, "allow_skip_frames", "1", 0);
-    av_opt_set(sc->video_avcc->priv_data, "maxrate", "7500000", 0);
-    if (sp.codec_priv_key && sp.codec_priv_value)
-        av_opt_set(sc->video_avcc->priv_data, sp.codec_priv_key, sp.codec_priv_value, 0);
-
-    sc->video_avcc->height = decoder_ctx->height;
-    sc->video_avcc->width = decoder_ctx->width;
-    sc->video_avcc->sample_aspect_ratio = decoder_ctx->sample_aspect_ratio;
-    if (sc->video_avc->pix_fmts)
-        sc->video_avcc->pix_fmt = sc->video_avc->pix_fmts[0];
-    else
-        sc->video_avcc->pix_fmt = decoder_ctx->pix_fmt;
-
-    //sc->video_avcc->bit_rate = 2 * 1000 * 1000; //4000000 or 7500000 ?
-//    sc->video_avcc->rc_buffer_size = 4 * 1000 * 1000;
-//    sc->video_avcc->rc_max_rate = 2 * 1000 * 1000;
-//    sc->video_avcc->rc_min_rate = 2.5 * 1000 * 1000;
-    sc->video_avcc->time_base = av_inv_q(input_framerate);
-    sc->video_avs->time_base = sc->video_avcc->time_base;
-
-    if (avcodec_open2(sc->video_avcc, sc->video_avc, NULL) < 0) {logging("could not open the codec"); return -1;}
-    avcodec_parameters_from_context(sc->video_avs->codecpar, sc->video_avcc);
-    return 0;
-}
-
 static int open_output_file(const char *filename)
 {
     //AVStream *out_stream; = encoder->video_avs
@@ -156,8 +119,8 @@ static int open_output_file(const char *filename)
             else
                 encoder->video_avcc->pix_fmt = AV_PIX_FMT_YUV420P;//dec_ctx->pix_fmt;
             /* video time_base can be set to whatever is handy and supported by encoder */
-            encoder->video_avcc->time_base = av_inv_q(decoder->video_avcc->framerate);
-            //enc_ctx->color_primaries= AVCOL_PRI_BT709;
+            //encoder->video_avcc->time_base = av_inv_q(decoder->video_avcc->framerate);
+            encoder->video_avcc->color_primaries= AVCOL_PRI_BT470BG;
             //enc_ctx->bit_rate= 2000000; //means
         }
 
@@ -172,9 +135,13 @@ static int open_output_file(const char *filename)
         av_dict_set(&opt, "allow_skip_frames", "1", 0);
         av_dict_set(&opt, "maxrate", "7500000", 0);
 
-        AVRational input_framerate = {198, 10};
+        AVRational input_framerate = {6666, 1}; //for test
         encoder->video_avcc->time_base = av_inv_q(input_framerate); //tbc = the time base in AVCodecContext for the codec used for a particular stream
         encoder->video_avs->time_base = encoder->video_avcc->time_base; //tbn = the time base in AVStream that has come from the container
+
+        //Works ok with input.yuvj422p
+        /*encoder->video_avs->time_base = decoder->video_avs->time_base;
+        printf("decoder time_base %u %u", decoder->video_avs->time_base.num, decoder->video_avs->time_base.den); //1 25 */
 
         ret = avcodec_open2(encoder->video_avcc, encoder->video_avc, &opt);
         if (ret < 0) {
@@ -198,7 +165,6 @@ static int open_output_file(const char *filename)
             av_log(NULL, AV_LOG_ERROR, "Copying parameters for stream #%u failed\n", 0);
             return ret;
         }
-        //mistake: encoder->video_avs->time_base = decoder->video_avs->time_base;
     }
 
     av_dump_format(encoder->avfc, 0, filename, 1);
@@ -227,11 +193,6 @@ int prepare_copy(AVFormatContext *avfc, AVStream **avs, AVCodecParameters *decod
     return 0;
 }
 
-int remux(AVPacket **pkt, AVFormatContext **avfc, AVRational decoder_tb, AVRational encoder_tb) {
-    av_packet_rescale_ts(*pkt, decoder_tb, encoder_tb);
-    if (av_interleaved_write_frame(*avfc, *pkt) < 0) { logging("error while copying stream packet"); return -1; }
-    return 0;
-}
 
 int encode_video(StreamingContext *decoder, StreamingContext *encoder, AVFrame *input_frame) {
     if (input_frame) input_frame->pict_type = AV_PICTURE_TYPE_NONE;
@@ -251,9 +212,15 @@ int encode_video(StreamingContext *decoder, StreamingContext *encoder, AVFrame *
         }
 
         output_packet->stream_index = decoder->video_index;
-        output_packet->duration = encoder->video_avs->time_base.den / encoder->video_avs->time_base.num / decoder->video_avs->avg_frame_rate.num * decoder->video_avs->avg_frame_rate.den;
 
-        av_packet_rescale_ts(output_packet, decoder->video_avs->time_base, encoder->video_avs->time_base);
+        output_packet->pts = av_rescale_q_rnd(output_packet->pts, decoder->video_avs->time_base, encoder->video_avs->time_base, AV_ROUND_NEAR_INF|AV_ROUND_PASS_MINMAX);
+        output_packet->dts = av_rescale_q_rnd(output_packet->dts, decoder->video_avs->time_base, encoder->video_avs->time_base, AV_ROUND_NEAR_INF|AV_ROUND_PASS_MINMAX);
+        output_packet->duration = av_rescale_q(output_packet->duration, decoder->video_avs->time_base, encoder->video_avs->time_base);
+        //output_packet->duration = encoder->video_avs->time_base.den / encoder->video_avs->time_base.num / decoder->video_avs->avg_frame_rate.num * decoder->video_avs->avg_frame_rate.den;
+
+        AVRational input_framerate = {25, 1};
+        AVRational input_framerate2 = {25, 1};
+        av_packet_rescale_ts(output_packet, input_framerate, input_framerate2);
         response = av_interleaved_write_frame(encoder->avfc, output_packet);
         if (response != 0) { logging("Error %d while receiving packet from decoder: %s", response, av_err2str(response)); return -1;}
     }
@@ -346,7 +313,9 @@ int main(int argc, char *argv[])
 //      sp.output_extension = ".webm";
 
     decoder = (StreamingContext*) calloc(1, sizeof(StreamingContext));
-    decoder->filename = "/home/a/mystorage/mnt_sda2_pseudo/2.3D printing video_2023.08.23.yuvj422p"; //"input.yuvj422p"; //"small_bunny_1080p_60fps.mp4";
+    //decoder->filename = "f5_20.yuvj422p";
+    //decoder->filename = "/home/a/mystorage/mnt_sda2_pseudo/2.3D printing video_2023.08.23.yuvj422p"; //"input.yuvj422p"; //"small_bunny_1080p_60fps.mp4";
+    decoder->filename = "input.yuvj422p"; //"small_bunny_1080p_60fps.mp4";
 
     encoder = (StreamingContext*) calloc(1, sizeof(StreamingContext));
     encoder->filename = "argv.mkv";
