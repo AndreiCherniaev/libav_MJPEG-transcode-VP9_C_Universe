@@ -209,7 +209,11 @@ static int open_output_file(const char *filename)
             return ret;
         }
 
-        out_stream->time_base = enc_ctx->time_base;
+        //wtf?
+        AVRational input_framerate = {25, 1}; //tbn
+        enc_ctx->time_base = av_inv_q(input_framerate); //tbc = the time base in AVCodecContext for the codec used for a particular stream
+        out_stream->time_base = enc_ctx->time_base; //tbn = the time base in AVStream that has come from the container
+        //out_stream->time_base = enc_ctx->time_base;
         stream_ctx[0].enc_ctx = enc_ctx;
     } else if (dec_ctx->codec_type == AVMEDIA_TYPE_UNKNOWN) {
         av_log(NULL, AV_LOG_FATAL, "Elementary stream #%d is of unknown type, cannot proceed\n", 0);
@@ -364,7 +368,7 @@ static int init_filters(void)
         return AVERROR(ENOMEM);
     return 0;
 }
-
+AVRational q;
 static int encode_write_frame(int flush)
 {
     FilteringContext *filter = &filter_ctx[0];
@@ -393,9 +397,10 @@ static int encode_write_frame(int flush)
 
         /* prepare packet for muxing */
         enc_pkt->stream_index = 0;
+        q= ofmt_ctx->streams[0]->time_base;
         av_packet_rescale_ts(enc_pkt,
                              stream->enc_ctx->time_base,
-                             ofmt_ctx->streams[0]->time_base);
+                             ofmt_ctx->streams[0]->time_base); //1000 ?wtf
 
         av_log(NULL, AV_LOG_DEBUG, "Muxing frame\n");
         /* mux encoded frame */
@@ -407,12 +412,11 @@ static int encode_write_frame(int flush)
 
 static int filter_encode_write_frame(AVFrame *frame)
 {
-    FilteringContext *filter = &filter_ctx[0];
     int ret;
 
     av_log(NULL, AV_LOG_INFO, "Pushing decoded frame to filters\n");
     /* push the decoded frame into the filtergraph */
-    ret = av_buffersrc_add_frame_flags(filter->buffersrc_ctx,
+    ret = av_buffersrc_add_frame_flags(filter_ctx[0].buffersrc_ctx,
                                        frame, 0);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Error while feeding the filtergraph\n");
@@ -422,8 +426,8 @@ static int filter_encode_write_frame(AVFrame *frame)
     /* pull filtered frames from the filtergraph */
     while (1) {
         av_log(NULL, AV_LOG_INFO, "Pulling filtered frame from filters\n");
-        ret = av_buffersink_get_frame(filter->buffersink_ctx,
-                                      filter->filtered_frame);
+        ret = av_buffersink_get_frame(filter_ctx[0].buffersink_ctx,
+                                      filter_ctx[0].filtered_frame);
         if (ret < 0) {
             /* if no more frames for output - returns AVERROR(EAGAIN)
              * if flushed and no more frames for output - returns AVERROR_EOF
@@ -434,10 +438,10 @@ static int filter_encode_write_frame(AVFrame *frame)
             break;
         }
 
-        filter->filtered_frame->time_base = av_buffersink_get_time_base(filter->buffersink_ctx);;
-        filter->filtered_frame->pict_type = AV_PICTURE_TYPE_NONE;
+        filter_ctx[0].filtered_frame->time_base = av_buffersink_get_time_base(filter_ctx[0].buffersink_ctx);;
+        filter_ctx[0].filtered_frame->pict_type = AV_PICTURE_TYPE_NONE;
         ret = encode_write_frame(0);
-        av_frame_unref(filter->filtered_frame);
+        av_frame_unref(filter_ctx[0].filtered_frame);
         if (ret < 0)
             break;
     }
